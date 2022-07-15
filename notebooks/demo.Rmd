@@ -20,8 +20,7 @@ penguins
 ```
 
 ```{r}
-penguins_to_clf <- penguins %>%
-  mutate(gentoo = factor(species == "Gentoo", levels = c(TRUE, FALSE)))
+penguins_to_clf <- penguins
 
 penguins_to_clf
 ```
@@ -36,8 +35,8 @@ data_train
 ```
 
 ```{r}
-train_eval <- data_train %>% validation_split(prop  = 0.8)
-# train_eval <- data_train %>% vfold_cv(v=10)
+# train_eval <- data_train %>% validation_split(prop  = 0.8)
+train_eval <- data_train %>% vfold_cv(v=10)
 ```
 
 # Explore Data
@@ -59,7 +58,7 @@ train_eval <- data_train %>% validation_split(prop  = 0.8)
 # Set Up Preprocessing (Recipe)
 
 ```{r}
-numeric_only_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm + 
+numeric_only_rec <- recipe(species ~ bill_length_mm + bill_depth_mm + 
                              flipper_length_mm + body_mass_g, 
                            data = data_train) %>%
   step_impute_mean(all_numeric_predictors()) %>%
@@ -67,7 +66,7 @@ numeric_only_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm +
 ```
 
 ```{r}
-nominal_included_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm + 
+nominal_included_rec <- recipe(species ~ bill_length_mm + bill_depth_mm + 
                              flipper_length_mm + body_mass_g + sex, 
                            data = data_train) %>%
   step_impute_mean(all_numeric_predictors()) %>%
@@ -84,7 +83,7 @@ knn_mdl <- nearest_neighbor() %>%
 ```
 
 ```{r}
-log_reg_mdl <- logistic_reg() %>%
+log_reg_mdl <- multinom_reg() %>%
   set_mode("classification")
 ```
 
@@ -138,7 +137,9 @@ eval_metrics <- metric_set(f_meas,
                            pr_auc, 
                            roc_auc,
                            precision, 
-                           recall)
+                           recall,
+                           sensitivity,
+                           specificity)
 ```
 
 # Train and Evaluate Workflow
@@ -213,8 +214,8 @@ collect_metrics(rf_nominal_included_fit)
 
 ```{r}
 tune_rf_mdl <- rand_forest(mtry = tune(),
-                      trees = 50,
-                      min_n = tune()) %>%
+                           trees = 50,
+                           min_n = tune()) %>%
   set_mode("classification")
 ```
 
@@ -250,7 +251,7 @@ rf_tuning_res %>% collect_metrics()
 ```{r}
 final_mdl <- tune_rf_mdl %>%
   finalize_model(
-    rf_tuning_res %>% select_best("pr_auc")
+    rf_tuning_res %>% select_best("f_meas")
   )
 
 final_mdl
