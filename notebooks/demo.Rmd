@@ -4,6 +4,7 @@ output: html_notebook
 ---
 
 # Load Required Libraries
+
 ```{r}
 library(tidyverse)
 library(tidymodels)
@@ -12,6 +13,7 @@ set.seed(400)
 ```
 
 # Read Data
+
 ```{r}
 library(palmerpenguins)
 penguins
@@ -25,6 +27,7 @@ penguins_to_clf
 ```
 
 # Split Data
+
 ```{r}
 data_split <- initial_split(penguins_to_clf, prop = 0.80)
 data_train <- training(data_split)
@@ -33,26 +36,28 @@ data_train
 ```
 
 ```{r}
-train_eval <- validation_split(data_train, prop = 0.8)
+train_eval <- data_train %>% validation_split(prop  = 0.8)
+# train_eval <- data_train %>% vfold_cv(v=10)
 ```
 
-
 # Explore Data
-```{r}
-data_train %>%
-  ggpairs()
 
-ggsave(
-  filename = "pairs.png",
-  device = "png",
-  path = "../plots",
-  width = 28,
-  height = 16,
-  units = "in"
-)
+```{r}
+# data_train %>%
+#   ggpairs()
+# 
+# ggsave(
+#   filename = "pairs.png",
+#   device = "png",
+#   path = "../plots",
+#   width = 28,
+#   height = 16,
+#   units = "in"
+# )
 ```
 
 # Set Up Preprocessing (Recipe)
+
 ```{r}
 numeric_only_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm + 
                              flipper_length_mm + body_mass_g, 
@@ -72,6 +77,7 @@ nominal_included_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm +
 ```
 
 # Set up Model
+
 ```{r}
 knn_mdl <- nearest_neighbor() %>%
   set_mode("classification")
@@ -88,6 +94,7 @@ rf_mdl <- rand_forest() %>%
 ```
 
 # Set up Workflows
+
 ```{r}
 knn_numeric_only_wf <- workflow() %>%
   add_recipe(numeric_only_rec) %>%
@@ -125,6 +132,7 @@ rf_nominal_included_wf <- workflow() %>%
 ```
 
 # Define Metrics
+
 ```{r}
 eval_metrics <- metric_set(f_meas,
                            pr_auc, 
@@ -134,15 +142,16 @@ eval_metrics <- metric_set(f_meas,
 ```
 
 # Train and Evaluate Workflow
+
 ```{r}
-knn_numeric_fit <- knn_numeric_wf %>%
+knn_numeric_only_fit <- knn_numeric_only_wf %>%
   fit_resamples(train_eval, 
                 control = control_resamples(save_pred = TRUE),
                 metrics = eval_metrics)
 
-conf_mat_resampled(knn_numeric_fit, tidy = FALSE) %>%
+conf_mat_resampled(knn_numeric_only_fit, tidy = FALSE) %>%
   autoplot(type = "heatmap")
-collect_metrics(knn_numeric_fit)
+collect_metrics(knn_numeric_only_fit)
 ```
 
 ```{r}
@@ -200,16 +209,69 @@ conf_mat_resampled(rf_nominal_included_fit, tidy = FALSE) %>%
 collect_metrics(rf_nominal_included_fit)
 ```
 
-# Final Results
+# Hyperparameter Tuning
+
 ```{r}
-final_results <- rf_nominal_included_wf %>%
+tune_rf_mdl <- rand_forest(mtry = tune(),
+                      trees = 50,
+                      min_n = tune()) %>%
+  set_mode("classification")
+```
+
+```{r}
+tune_rf_wf <- workflow() %>%
+  add_recipe(nominal_included_rec) %>%
+  add_model(tune_rf_mdl)
+```
+
+```{r}
+rf_grid <- grid_regular(
+  mtry(range = c(10, 30)),
+  min_n(range = c(2, 8)),
+  levels = 5
+)
+
+rf_grid
+```
+
+```{r}
+doParallel::registerDoParallel()
+
+rf_tuning_res <- tune_rf_wf %>%
+  tune_grid(
+    grid = rf_grid,
+    resamples = train_eval,
+    metrics = eval_metrics
+  )
+
+rf_tuning_res %>% collect_metrics()
+```
+
+```{r}
+final_mdl <- tune_rf_mdl %>%
+  finalize_model(
+    rf_tuning_res %>% select_best("pr_auc")
+  )
+
+final_mdl
+```
+
+# Final Results
+
+```{r}
+final_wf <- workflow() %>%
+  add_recipe(nominal_included_rec) %>%
+  add_model(final_mdl)
+```
+
+```{r}
+final_results <- final_wf %>%
   last_fit(split = data_split, metrics = eval_metrics)
 ```
 
 ```{r}
 final_results$.metrics
 ```
-
 
 ```{r}
 final_results$.predictions %>%
