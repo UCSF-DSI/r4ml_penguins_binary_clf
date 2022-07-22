@@ -20,7 +20,8 @@ penguins
 ```
 
 ```{r}
-penguins_to_clf <- penguins
+penguins_to_clf <- penguins %>%
+  mutate(gentoo = factor(species == "Gentoo", levels = c(TRUE, FALSE)))
 
 penguins_to_clf
 ```
@@ -36,7 +37,8 @@ data_train
 
 ```{r}
 # train_eval <- data_train %>% validation_split(prop  = 0.8)
-train_eval <- data_train %>% vfold_cv(v=10)
+# train_eval <- data_train %>% vfold_cv(v=10)
+train_eval <- data_train %>% bootstraps(times=25)
 ```
 
 # Explore Data
@@ -58,7 +60,7 @@ train_eval <- data_train %>% vfold_cv(v=10)
 # Set Up Preprocessing (Recipe)
 
 ```{r}
-numeric_only_rec <- recipe(species ~ bill_length_mm + bill_depth_mm + 
+numeric_only_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm + 
                              flipper_length_mm + body_mass_g, 
                            data = data_train) %>%
   step_impute_mean(all_numeric_predictors()) %>%
@@ -66,7 +68,7 @@ numeric_only_rec <- recipe(species ~ bill_length_mm + bill_depth_mm +
 ```
 
 ```{r}
-nominal_included_rec <- recipe(species ~ bill_length_mm + bill_depth_mm + 
+nominal_included_rec <- recipe(gentoo ~ bill_length_mm + bill_depth_mm + 
                              flipper_length_mm + body_mass_g + sex, 
                            data = data_train) %>%
   step_impute_mean(all_numeric_predictors()) %>%
@@ -83,7 +85,7 @@ knn_mdl <- nearest_neighbor() %>%
 ```
 
 ```{r}
-log_reg_mdl <- multinom_reg() %>%
+log_reg_mdl <- logistic_reg() %>%
   set_mode("classification")
 ```
 
@@ -279,4 +281,15 @@ final_results$.predictions %>%
   as.data.frame() %>%
   conf_mat(truth = gentoo, estimate = .pred_class) %>%
   autoplot(type = "heatmap")
+```
+
+# Save Results
+
+```{r}
+data_split %>% saveRDS(file = "../data/data_split.RData")
+train_eval %>% saveRDS(file = "../data/train_eval.RData")
+```
+
+```{r}
+final_results %>% saveRDS(file = "../models/final_results.RData")
 ```
